@@ -46,7 +46,12 @@ delta_temp_silver_is_record = delta_temp_silver_cast.withColumn("is_valid_record
 # Filter Valid Records
 # We use APPEND here as well to keep the historical timestamps intact
 delta_silver_valid = delta_temp_silver_is_record.filter("is_valid_record")
-delta_silver_valid.write.format("delta").mode("overwrite").saveAsTable("delta_silver_valid_temp") 
+delta_silver_valid.write.format("delta").mode("overwrite").saveAsTable("delta_silver_valid") 
+
+# Filter Invalid Records
+delta_silver_invalid = delta_temp_silver_is_record.filter("NOT is_valid_record")
+delta_silver_invalid.write.format("delta").mode("overwrite").saveAsTable("delta_quarantine") 
+
 
 # --- STEP 3: FACT LAYER (INCREMENTAL LOAD) ---
 target_table = "delta_facts_sales"
