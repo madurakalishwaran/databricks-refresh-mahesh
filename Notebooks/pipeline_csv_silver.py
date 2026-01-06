@@ -4,7 +4,7 @@ from delta.tables import DeltaTable
 
 spark = SparkSession.builder.appName("pipeline -- csv_silver_table").getOrCreate()
 
-file_path = "/Volumes/workspace/default/my_datas/sample-chocolate-sales-data-all.csv"
+file_path = "/Volumes/workspace/default/my_datas/chocolate_sales.csv"
 
 # Read csv
 csv_df = (spark
@@ -43,17 +43,15 @@ invalid_conditions = (
 temp_silver_is_record_df = temp_siver_df.withColumn("is_valid_record", ~(invalid_conditions))
 
 # Filter Valid Records
-silver_valid_df = temp_silver_is_record_df.filter("is_valid_record")
+silver_valid_df = temp_silver_is_record_df.filter("is_valid_record").drop("is_valid_record")
 silver_valid_df.write.format("delta").mode("overwrite").saveAsTable("delta_silver_valid") 
 
 # Filter Invalid Records
-silver_invalid_df = temp_silver_is_record_df.filter("NOT is_valid_record")
+silver_invalid_df = temp_silver_is_record_df.filter("NOT is_valid_record").drop("is_valid_record")
 silver_invalid_df.write.format("delta").mode("overwrite").saveAsTable("delta_quarantine") 
 
-
-silver_invalid_df.show(2)
 silver_valid_df.show(2)
+silver_invalid_df.show(8)
 
 print(f"silver valid count: {silver_valid_df.count()}")
-
 print(f"silver invalid count: {silver_invalid_df.count()}")
