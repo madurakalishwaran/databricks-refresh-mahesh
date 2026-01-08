@@ -1,6 +1,6 @@
 # Databricks notebook source
 from pyspark.sql import SparkSession, functions as F
-from delta.tables import DeltaTable
+
 
 spark = SparkSession.builder.appName("pipeline -- csv_silver_table").getOrCreate()
 
@@ -24,6 +24,7 @@ csv_df = (spark
 
 # Read from delta_bronze
 bronze_df = spark.read.table("delta_bronze")
+delta_bronze_count = bronze_df.count()
 
 # Data Casting
 temp_siver_df = bronze_df.withColumns({
@@ -44,14 +45,15 @@ temp_silver_is_record_df = temp_siver_df.withColumn("is_valid_record", ~(invalid
 
 # Filter Valid Records
 silver_valid_df = temp_silver_is_record_df.filter("is_valid_record").drop("is_valid_record")
-silver_valid_df.write.format("delta").mode("overwrite").saveAsTable("delta_silver_valid") 
+silver_valid_df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable("delta_silver_valid") 
 
 # Filter Invalid Records
 silver_invalid_df = temp_silver_is_record_df.filter("NOT is_valid_record").drop("is_valid_record")
-silver_invalid_df.write.format("delta").mode("overwrite").saveAsTable("delta_quarantine") 
+silver_invalid_df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable("delta_quarantine") 
 
-silver_valid_df.show(2)
-silver_invalid_df.show(8)
+silver_valid_count = silver_valid_df.count()
+silver_quarantine_count = silver_invalid_df.count()
 
-print(f"silver valid count: {silver_valid_df.count()}")
-print(f"silver invalid count: {silver_invalid_df.count()}")
+print(f"bronze count: {delta_bronze_count}")
+print(f"silver valid count: {silver_valid_count}")
+print(f"silver quarantine count: {silver_quarantine_count}")
