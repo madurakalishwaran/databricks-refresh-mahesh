@@ -5,15 +5,10 @@ import re
 from delta import DeltaTable
 import uuid
 import datetime
+from sales_pipeline_config import PipelineConfig
 
-# ================= INITIALIZE SPARK & CONSTANTS  =================
+cfg = PipelineConfig()
 spark = SparkSession.builder.appName("Sales").getOrCreate()
-
-DIR_PATH = "/Volumes/workspace/default/my_datas/daily_sales/"
-BRONZE_TABLE = "sales_bronze"
-SILVER_TABLE = "sales_silver"
-QUARANTINE_TABLE = "sales_quarantine"
-FACT_TABLE = "sales_fact"
 
 def processed_file_rows() -> Dict[str, Any]:
     filename_df = spark.read.table("sales_processed_files")
@@ -21,19 +16,19 @@ def processed_file_rows() -> Dict[str, Any]:
     return processed_rows
 
 def create_run_metadata(file_name: str) -> Dict[str, Any]:
-        run_metadata = {
-            "run_id": str(uuid.uuid4()),
-            "run_timestamp": datetime.datetime.now(),
-            "bronze_row_count": 0,
-            "silver_valid_count": 0,
-            "silver_quarantine_count": 0,
-            "fact_rows_inserted": 0,
-            "fact_rows_updated": 0,
-            "run_status": "success",
-            "file_name": file_name
-        }
+    run_metadata = {
+        "run_id": str(uuid.uuid4()),
+        "run_timestamp": datetime.datetime.now(),
+        "bronze_row_count": 0,
+        "silver_valid_count": 0,
+        "silver_quarantine_count": 0,
+        "fact_rows_inserted": 0,
+        "fact_rows_updated": 0,
+        "run_status": "success",
+        "file_name": file_name
+    }
 
-        return run_metadata
+    return run_metadata
 
 def process_single_file(file_name: str, last_modified_time: datetime) -> None:
 
@@ -45,7 +40,7 @@ def process_single_file(file_name: str, last_modified_time: datetime) -> None:
 
     try:
         
-        SOURCE_PATH = DIR_PATH + file_name + ".csv"
+        SOURCE_PATH = cfg.dir_path + file_name + ".csv"
         # ================= BRONZE INGESTION =================
         bronze_df, run_metadata =  ingest_csv_bronze(SOURCE_PATH, run_metadata)
         
@@ -92,9 +87,9 @@ def ingest_csv_bronze(SOURCE_PATH: str, run_metadata: Dict[str, Any]) -> Tuple[D
         for c in bronze_df.columns
     ])
 
-    bronze_df.write.format('delta').mode("overwrite").saveAsTable(BRONZE_TABLE)
-    bronze_df = spark.read.table(BRONZE_TABLE)
-    run_metadata["bronze_row_count"] = spark.table(BRONZE_TABLE).count()
+    bronze_df.write.format('delta').mode("overwrite").saveAsTable(cfg.bronze_table)
+    bronze_df = spark.read.table(cfg.bronze_table)
+    run_metadata["bronze_row_count"] = spark.table(cfg.bronze_table).count()
     return bronze_df, run_metadata
 
 def transform_silver(bronze_df: DataFrame, run_metadata: Dict[str, Any]) -> Tuple[DataFrame, Dict[str, Any]]:
@@ -121,12 +116,12 @@ def transform_silver(bronze_df: DataFrame, run_metadata: Dict[str, Any]) -> Tupl
     quarantine_df = bronze_df.filter(invalid_condition)
 
     # Write Valid & Invlaid rows to delta
-    silver_df.write.format('delta').mode("overwrite").saveAsTable(SILVER_TABLE)
-    quarantine_df.write.format('delta').mode("overwrite").saveAsTable(QUARANTINE_TABLE)
+    silver_df.write.format('delta').mode("overwrite").saveAsTable(cfg.silver_table)
+    quarantine_df.write.format('delta').mode("overwrite").saveAsTable(cfg.quarantine_table)
 
     # Get Silver_valid and Silver_invalid counts
-    run_metadata["silver_valid_count"]  = spark.table(SILVER_TABLE).count()
-    run_metadata["silver_quarantine_count"] = spark.table(QUARANTINE_TABLE).count()
+    run_metadata["silver_valid_count"]  = spark.table(cfg.silver_table).count()
+    run_metadata["silver_quarantine_count"] = spark.table(cfg.quarantine_table).count()
 
     return silver_df, run_metadata
 
@@ -141,10 +136,10 @@ def incremental_loads(silver_df: DataFrame, run_metadata: Dict[str, Any]) -> Dic
     merge_condition = "t.order_id = s.order_id"
 
     # Check if table exists an create one and overwrite with silver valid data
-    if not spark.catalog.tableExists(FACT_TABLE):
+    if not spark.catalog.tableExists(cfg.fact_table):
         print("Fact table does not exist. Creating one..")
-        silver_df.write.format('delta').mode("overwrite").saveAsTable(FACT_TABLE)
-        fact_table_count = spark.table(FACT_TABLE).count()
+        silver_df.write.format('delta').mode("overwrite").saveAsTable(cfg.fact_table)
+        fact_table_count = spark.table(cfg.fact_table).count()
         print(f"Total No of rows in fact table: {fact_table_count}")
 
     # If table exists, merge the upsert data
@@ -152,7 +147,7 @@ def incremental_loads(silver_df: DataFrame, run_metadata: Dict[str, Any]) -> Dic
         print("Table exists. Upserting rows..")
 
         # Create delta table object for sales_fact
-        fact_df = DeltaTable.forName(spark, FACT_TABLE)
+        fact_df = DeltaTable.forName(spark, cfg.fact_table)
         fact_df.alias("t").merge(
             silver_df.alias("s"), 
             merge_condition
@@ -185,9 +180,9 @@ def write_pipeline_metrics(metrics_data) -> None:
         metrics_df.write.format('delta').mode("append").saveAsTable('sales_pipeline_metrics')
         print("Metrics appended successfully")
 
-def main():
+def main() -> None:
     
-    all_files = dbutils.fs.ls(DIR_PATH)
+    all_files = dbutils.fs.ls(cfg.dir_path)
     task_to_run = []
     # ================= FILE DISCOVERY =================
     processed_rows = processed_file_rows()
