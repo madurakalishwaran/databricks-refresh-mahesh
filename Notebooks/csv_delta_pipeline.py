@@ -7,7 +7,7 @@ import datetime
 # variable declaration
 
 spark = SparkSession.builder.appName("pipeline -- csv_silver_table").getOrCreate()
-source_path = "/Volumes/workspace/default/my_datas/chocolate_sales.csv"
+source_path = "/Volumes/workspace/default/my_data/chocolate_sales.csv"
 
 bronze_df = None
 silver_valid_df = None
